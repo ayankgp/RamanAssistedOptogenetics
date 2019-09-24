@@ -6,7 +6,7 @@ from ctypes import c_int, c_double, POINTER, Structure
 __doc__ = """
 Python wrapper for RamanOpticalControl.c
 Compile with:
-gcc -O3 -shared -o RamanOpticalControl.so RamanOpticalControl.c -lm -fopenmp -fPIC -lnlopt
+gcc -O3 -shared -o RamanOpticalControl.so RamanOpticalControl.c -lm -fopenmp -fPIC
 """
 
 

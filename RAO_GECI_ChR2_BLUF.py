@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 """
-Raman.py:
+RAO_GECI_ChR2_BLUF.py:
 
 Class containing C calls for spectra calculation and Raman control.
 Plots results obtained from C calls.
