@@ -34,12 +34,12 @@ typedef struct parameters{
     cmplx* rho_0;
     int nDIM;
     int N_exc;
-    double* time_A;
-    double* time_R;
+    double* time;
     double timeAMP_A;
     double timeAMP_R;
-    int timeDIM_A;
-    int timeDIM_R;
+    double timeAMP;
+    int timeDIM;
+    double delay;
     double field_amp_A;
     double field_amp_R;
     double omega_R;
@@ -68,16 +68,16 @@ typedef struct molecule{
     int freqDIM_A;
     cmplx* rho_0;
     cmplx* mu;
-    cmplx* field_A;
     cmplx* field_R;
+    cmplx* field_A;
+    cmplx* field;
     cmplx* rho;
     double* abs_spectra;
     double* abs_dist;
     double* ref_spectra;
     double* Raman_levels;
     double* levels;
-    cmplx* dyn_rho_A;
-    cmplx* dyn_rho_R;
+    cmplx* dyn_rho;
     double* prob;
 } molecule;
 
@@ -349,61 +349,61 @@ void CalculateAbsorptionSpectraField(molecule* mol, const parameters *const para
 {
     int i;
     int nDIM = params->nDIM;
+    double timeAMP_A = params->timeAMP_A;
 
-    double* t = params->time_A;
+    double* t = params->time;
     const double dt = fabs(t[1] - t[0]);
     double A = params->field_amp_A;
 
-    for(i=0; i<params->timeDIM_A; i++)
+    for(i=0; i<params->timeDIM; i++)
     {
         const double time = t[i] + 0.5 * dt;
-        mol->field_A[i] = A * pow(cos(M_PI*time/(fabs(2*t[0]))), 2) * cos(mol->frequency_A[k] * time);
+        mol->field[i] = A * pow(cos(M_PI*time/timeAMP_A), 2) * cos(mol->frequency_A[k] * time);
     }
 }
 
-
-void CalculateExcitationControlField(molecule* mol, const parameters *const params)
-//---------------------------------------------------------------------------------//
-//              RETURNS THE EXCITATION CONTROL FIELD AS A FUNCTION OF TIME         //
-//---------------------------------------------------------------------------------//
-{
-    int i;
-    int nDIM = params->nDIM;
-    int timeDIM = params->timeDIM_A;
-
-    double* t = params->time_A;
-    const double dt = fabs(t[1] - t[0]);
-    double A = params->field_amp_A;
-
-    for(i=0; i<timeDIM; i++)
-    {
-        const double time = t[i] + 0.5 * dt;
-        mol->field_A[i] = A * pow(cos(M_PI*time/(fabs(2*t[0]))), 2) * cos(params->omega_e * time);
-    }
-}
-
-
-void CalculateRamanControlField(molecule* mol, const parameters *const params)
+void CalculateControlField(molecule* mol, const parameters *const params)
 //---------------------------------------------------------------------------------//
 //                 RETURNS THE RAMAN CONTROL FIELD AS A FUNCTION OF TIME           //
 //---------------------------------------------------------------------------------//
 {
     int i;
     int nDIM = params->nDIM;
-    int timeDIM_vib = params->timeDIM_R;
+    int timeDIM = params->timeDIM;
 
-    double* t = params->time_R;
-    const double dt = fabs(t[1] - t[0]);
+    double timeAMP_A = params->timeAMP_A;
+    double timeAMP_R = params->timeAMP_R;
+    double timeAMP = params->timeAMP;
+
+    double delay = params->delay;
+
+    int delayINDX = (int) (timeDIM * (timeAMP_R - delay) / timeAMP);
+    int timeDIM_R = (int) (timeDIM * timeAMP_R / timeAMP);
+    int timeDIM_A = (int) (timeDIM * (timeAMP_A) / timeAMP);
+
+    double* t = params->time;
+    const double dt = params->timeAMP / (params->timeDIM - 1);
 
     double A_R = params->field_amp_R;
+    double A_E = params->field_amp_A;
 
-    for(i=0; i<timeDIM_vib; i++)
+    for(i=0; i<timeDIM_R; i++)
     {
         const double time = t[i] + 0.5 * dt;
-        mol->field_R[i] = A_R * pow(cos(M_PI*time/(fabs(2*t[0]))), 2) *
+        mol->field_R[i] = A_R * pow(cos(M_PI*(time - timeAMP_R / 2)/(timeAMP_R)), 2) *
                           ((cos((params->omega_R + params->omega_v) * time)) + cos(params->omega_R * time));
     }
 
+    for(i=delayINDX; i<delayINDX + timeDIM_A; i++)
+    {
+        const double time = t[i] + 0.5 * dt;
+        mol->field_A[i] = A_E * pow(cos(M_PI*(time - timeAMP_R - timeAMP_A / 2 + delay)/timeAMP_A), 2) * cos(params->omega_e * time);
+    }
+
+    for(i=0; i<timeDIM; i++)
+    {
+        mol->field[i] = mol->field_R[i] + mol->field_A[i];
+    }
 }
 
 
@@ -475,16 +475,16 @@ void PropagateAbsorptionSpectra(molecule* mol, const parameters *const params, c
     const int nDIM = params->nDIM;
 
     cmplx *rho_0 = mol->rho_0;
-    double *time = params->time_A;
-    double dt = fabs(time[1] - time[0]);
+    double *time = params->time;
+    double dt = params->timeAMP / (params->timeDIM - 1);
 
-    cmplx* field = mol->field_A;
+    cmplx* field = mol->field;
 
     cmplx* L_rho_func = (cmplx*)calloc(nDIM * nDIM, sizeof(cmplx));
     copy_mat(rho_0, L_rho_func, nDIM);
     copy_mat(rho_0, mol->rho, nDIM);
 
-    for(t_i=0; t_i<params->timeDIM_A; t_i++)
+    for(t_i=0; t_i<params->timeDIM; t_i++)
     {
         k=1;
         do
@@ -505,7 +505,7 @@ void PropagateAbsorptionSpectra(molecule* mol, const parameters *const params, c
     free(L_rho_func);
 }
 
-void RamanControl(molecule* mol, const parameters *const params)
+void Control(molecule* mol, const parameters *const params)
 //---------------------------------------------------------------------------------------------------------------------//
 // 	 	 		     CALCULATES FULL LINDBLAD DYNAMICS  DUE TO THE RAMAN CONTROL FIELD FROM TIME 0 to T               //
 //--------------------------------------------------------------------------------------------------------------------//
@@ -514,17 +514,17 @@ void RamanControl(molecule* mol, const parameters *const params)
     const int nDIM = mol->nDIM;
 
     cmplx *rho_0 = mol->rho_0;
-    double *time = params->time_R;
+    double *time = params->time;
 
-    cmplx* field = mol->field_R;
+    cmplx* field = mol->field;
 
-    double dt = fabs(time[1] - time[0]);
+    double dt = params->timeAMP / (params->timeDIM - 1);
 
     cmplx* L_rho_func = (cmplx*)calloc(nDIM * nDIM, sizeof(cmplx));
     copy_mat(rho_0, L_rho_func, nDIM);
     copy_mat(rho_0, mol->rho, nDIM);
 
-    for(t_index=0; t_index<params->timeDIM_R; t_index++)
+    for(t_index=0; t_index<params->timeDIM; t_index++)
     {
         k=1;
         do
@@ -537,54 +537,10 @@ void RamanControl(molecule* mol, const parameters *const params)
 
         for(i=0; i<nDIM; i++)
         {
-            mol->dyn_rho_R[i*params->timeDIM_R + t_index] = mol->rho[i*nDIM + i];
+            mol->dyn_rho[i*params->timeDIM + t_index] = mol->rho[i*nDIM + i];
         }
 
         copy_mat(mol->rho, L_rho_func, nDIM);
-    }
-
-    free(L_rho_func);
-}
-
-
-void ExcitationControl(molecule* mol, const parameters *const params)
-//---------------------------------------------------------------------------------------------------------------------//
-// 	 	     CALCULATES FULL LINDBLAD DYNAMICS  DUE TO THE EXCITATION CONTROL FIELD FROM TIME 0 to T               	  //
-//--------------------------------------------------------------------------------------------------------------------//
-{
-
-    int i, j, k;
-    int tau_index, t_index;
-    int nDIM = mol->nDIM;
-
-    cmplx *rho_0 = mol->rho_0;
-    double *time = params->time_A;
-
-    cmplx* field = mol->field_A;
-
-    double dt = fabs(time[1] - time[0]);
-
-    cmplx* L_rho_func = (cmplx*)calloc(nDIM * nDIM, sizeof(cmplx));
-    copy_mat(rho_0, L_rho_func, nDIM);
-
-    for(t_index=0; t_index<params->timeDIM_A; t_index++)
-    {
-        k=1;
-        do
-        {
-            L_operate(L_rho_func, field[t_index], mol, params);
-            scale_mat(L_rho_func, dt/k, nDIM, nDIM);
-            add_mat(L_rho_func, mol->rho, nDIM, nDIM);
-            k+=1;
-        }while(complex_max_element(L_rho_func, nDIM) > ERROR_BOUND);
-
-        for(i=0; i<nDIM; i++)
-        {
-            mol->dyn_rho_A[i*params->timeDIM_A + t_index] = mol->rho[i*nDIM + i];
-        }
-
-        copy_mat(mol->rho, L_rho_func, nDIM);
-
     }
 
     free(L_rho_func);
@@ -608,16 +564,16 @@ void copy_molecule(molecule* original, molecule* copy, parameters* params)
     copy->freqDIM_A = original->freqDIM_A;
     copy->rho_0 = (cmplx*)malloc(nDIM*nDIM*sizeof(cmplx));
     copy->mu = (cmplx*)malloc(nDIM*nDIM*sizeof(cmplx));
-    copy->field_A = (cmplx*)malloc(params->timeDIM_A*sizeof(cmplx));
-    copy->field_R = (cmplx*)malloc(params->timeDIM_R*sizeof(cmplx));
+    copy->field_A = (cmplx*)malloc(params->timeDIM*sizeof(cmplx));
+    copy->field_R = (cmplx*)malloc(params->timeDIM*sizeof(cmplx));
+    copy->field = (cmplx*)malloc(params->timeDIM*sizeof(cmplx));
     copy->rho = (cmplx*)malloc(nDIM*nDIM*sizeof(cmplx));
     copy->abs_spectra = (double*)malloc(original->freqDIM_A*sizeof(double));
     copy->abs_dist = (double*)malloc(params->prob_guess_num*original->freqDIM_A*sizeof(double));
     copy->ref_spectra = (double*)malloc(original->freqDIM_A*sizeof(double));
     copy->Raman_levels = (double*)malloc((nDIM - params->N_exc)*sizeof(double));
     copy->levels = (double*)malloc(params->N_exc*params->prob_guess_num*sizeof(double));
-    copy->dyn_rho_A = (cmplx*)malloc(nDIM*params->timeDIM_A*sizeof(cmplx));
-    copy->dyn_rho_R = (cmplx*)malloc(nDIM*params->timeDIM_R*sizeof(cmplx));
+    copy->dyn_rho = (cmplx*)malloc(nDIM*params->timeDIM*sizeof(cmplx));
     copy->prob = (double*)malloc(N*sizeof(double));
 
     memset(copy->energies, 0, params->nDIM*sizeof(double));
@@ -626,16 +582,16 @@ void copy_molecule(molecule* original, molecule* copy, parameters* params)
     memcpy(copy->frequency_A, original->frequency_A, original->freqDIM_A*sizeof(double));
     memcpy(copy->rho_0, original->rho_0, nDIM*nDIM*sizeof(cmplx));
     memcpy(copy->mu, original->mu, nDIM*nDIM*sizeof(cmplx));
-    memcpy(copy->field_A, original->field_A, params->timeDIM_A*sizeof(cmplx));
-    memcpy(copy->field_R, original->field_R, params->timeDIM_R*sizeof(cmplx));
+    memcpy(copy->field_A, original->field_A, params->timeDIM*sizeof(cmplx));
+    memcpy(copy->field_R, original->field_R, params->timeDIM*sizeof(cmplx));
+    memcpy(copy->field, original->field, params->timeDIM*sizeof(cmplx));
     memcpy(copy->rho, original->rho, nDIM*nDIM*sizeof(cmplx));
     memcpy(copy->abs_spectra, original->abs_spectra, original->freqDIM_A*sizeof(double));
     memcpy(copy->abs_dist, original->abs_dist, params->prob_guess_num*original->freqDIM_A*sizeof(double));
     memcpy(copy->ref_spectra, original->ref_spectra, original->freqDIM_A*sizeof(double));
     memcpy(copy->Raman_levels, original->Raman_levels, (nDIM - params->N_exc)*sizeof(double));
     memcpy(copy->levels, original->levels, params->N_exc*params->prob_guess_num*sizeof(double));
-    memcpy(copy->dyn_rho_A, original->dyn_rho_A, nDIM*params->timeDIM_A*sizeof(cmplx));
-    memcpy(copy->dyn_rho_R, original->dyn_rho_R, nDIM*params->timeDIM_R*sizeof(cmplx));
+    memcpy(copy->dyn_rho, original->dyn_rho, nDIM*params->timeDIM*sizeof(cmplx));
     memcpy(copy->prob, original->prob, N*sizeof(double));
 }
 
@@ -783,7 +739,7 @@ double nloptJ_control(unsigned N, const double *opt_control_params, double *grad
     molecule* mol_B = molecules->mol_system_B->original;
     int* count = molecules->count;
 
-    double dt_A, dt_R;
+    double dt;
 
     double* prob_A = (double*)malloc(params->prob_guess_num*sizeof(double));
     double* prob_B = (double*)malloc(params->prob_guess_num*sizeof(double));
@@ -802,60 +758,41 @@ double nloptJ_control(unsigned N, const double *opt_control_params, double *grad
     params->timeAMP_A = opt_control_params[6];
     params->timeAMP_R = opt_control_params[7];
 
-    dt_A = params->timeAMP_A * 2 / (params->timeDIM_A - 1);
-    dt_R = params->timeAMP_R * 2 / (params->timeDIM_R - 1);
+    dt = params->timeAMP/ (params->timeDIM - 1);
 
-    for(int i=0; i<params->timeDIM_A; i++)
+    for(int i=0; i<params->timeDIM; i++)
     {
-        params->time_A[i] = - params->timeAMP_A + i * dt_A;
+        params->time[i] = i * dt;
     }
 
-    for(int i=0; i<params->timeDIM_R; i++)
-    {
-        params->time_R[i] = - params->timeAMP_R + i * dt_R;
-    }
-
-    memset(mol_A->dyn_rho_R, 0, mol_A->nDIM*params->timeDIM_R*sizeof(cmplx));
-    memset(mol_B->dyn_rho_R, 0, mol_B->nDIM*params->timeDIM_R*sizeof(cmplx));
-    memset(mol_A->dyn_rho_A, 0, mol_A->nDIM*params->timeDIM_A*sizeof(cmplx));
-    memset(mol_B->dyn_rho_A, 0, mol_B->nDIM*params->timeDIM_A*sizeof(cmplx));
+    memset(mol_A->dyn_rho, 0, mol_A->nDIM*params->timeDIM*sizeof(cmplx));
+    memset(mol_B->dyn_rho, 0, mol_B->nDIM*params->timeDIM*sizeof(cmplx));
     memset(mol_A->rho, 0, mol_A->nDIM*mol_A->nDIM*sizeof(cmplx));
     memset(mol_B->rho, 0, mol_B->nDIM*mol_B->nDIM*sizeof(cmplx));
 
-    CalculateRamanControlField(mol_A, params);
-    CalculateRamanControlField(mol_B, params);
-
-    CalculateExcitationControlField(mol_A, params);
-    CalculateExcitationControlField(mol_B, params);
+    CalculateControlField(mol_A, params);
+    CalculateControlField(mol_B, params);
 
     #pragma omp parallel for
     for(int j=0; j<params->prob_guess_num; j++)
     {
-        memset(ensemble_A[j]->dyn_rho_R, 0, mol_A->nDIM*params->timeDIM_R*sizeof(cmplx));
-        memset(ensemble_B[j]->dyn_rho_R, 0, mol_B->nDIM*params->timeDIM_R*sizeof(cmplx));
-        memset(ensemble_A[j]->dyn_rho_A, 0, mol_A->nDIM*params->timeDIM_A*sizeof(cmplx));
-        memset(ensemble_B[j]->dyn_rho_A, 0, mol_B->nDIM*params->timeDIM_A*sizeof(cmplx));
+        memset(ensemble_A[j]->dyn_rho, 0, mol_A->nDIM*params->timeDIM*sizeof(cmplx));
+        memset(ensemble_B[j]->dyn_rho, 0, mol_B->nDIM*params->timeDIM*sizeof(cmplx));
 
-        memcpy(ensemble_A[j]->field_R, mol_A->field_R, params->timeDIM_R*sizeof(cmplx));
-        memcpy(ensemble_B[j]->field_R, mol_B->field_R, params->timeDIM_R*sizeof(cmplx));
-        memcpy(ensemble_A[j]->field_A, mol_A->field_A, params->timeDIM_A*sizeof(cmplx));
-        memcpy(ensemble_B[j]->field_A, mol_B->field_A, params->timeDIM_A*sizeof(cmplx));
+        memcpy(ensemble_A[j]->field_R, mol_A->field_R, params->timeDIM*sizeof(cmplx));
+        memcpy(ensemble_B[j]->field_R, mol_B->field_R, params->timeDIM*sizeof(cmplx));
+        memcpy(ensemble_A[j]->field_A, mol_A->field_A, params->timeDIM*sizeof(cmplx));
+        memcpy(ensemble_B[j]->field_A, mol_B->field_A, params->timeDIM*sizeof(cmplx));
+        memcpy(ensemble_A[j]->field, mol_A->field, params->timeDIM*sizeof(cmplx));
+        memcpy(ensemble_B[j]->field, mol_B->field, params->timeDIM*sizeof(cmplx));
 
-        RamanControl(ensemble_A[j], params);
-        RamanControl(ensemble_B[j], params);
+        Control(ensemble_A[j], params);
+        Control(ensemble_B[j], params);
 
-        ExcitationControl(ensemble_A[j], params);
-        ExcitationControl(ensemble_B[j], params);
-
-        scale_mat(ensemble_A[j]->dyn_rho_R, prob_A[j], mol_A->nDIM, params->timeDIM_R);
-        add_mat(ensemble_A[j]->dyn_rho_R, mol_A->dyn_rho_R, mol_A->nDIM, params->timeDIM_R);
-        scale_mat(ensemble_B[j]->dyn_rho_R, prob_B[j], mol_B->nDIM, params->timeDIM_R);
-        add_mat(ensemble_B[j]->dyn_rho_R, mol_B->dyn_rho_R, mol_B->nDIM, params->timeDIM_R);
-
-        scale_mat(ensemble_A[j]->dyn_rho_A, prob_A[j], mol_A->nDIM, params->timeDIM_A);
-        add_mat(ensemble_A[j]->dyn_rho_A, mol_A->dyn_rho_A, mol_A->nDIM, params->timeDIM_A);
-        scale_mat(ensemble_B[j]->dyn_rho_A, prob_B[j], mol_B->nDIM, params->timeDIM_A);
-        add_mat(ensemble_B[j]->dyn_rho_A, mol_B->dyn_rho_A, mol_B->nDIM, params->timeDIM_A);
+        scale_mat(ensemble_A[j]->dyn_rho, prob_A[j], mol_A->nDIM, params->timeDIM);
+        add_mat(ensemble_A[j]->dyn_rho, mol_A->dyn_rho, mol_A->nDIM, params->timeDIM);
+        scale_mat(ensemble_B[j]->dyn_rho, prob_B[j], mol_B->nDIM, params->timeDIM);
+        add_mat(ensemble_B[j]->dyn_rho, mol_B->dyn_rho, mol_B->nDIM, params->timeDIM);
 
         scale_mat(ensemble_A[j]->rho, prob_A[j], mol_A->nDIM, mol_A->nDIM);
         add_mat(ensemble_A[j]->rho, mol_A->rho, mol_A->nDIM, mol_A->nDIM);
@@ -878,12 +815,12 @@ double nloptJ_control(unsigned N, const double *opt_control_params, double *grad
     J = pop_exc_A / pop_exc_B;
 
     *count = *count + 1;
-    printf("%d| (", *count);
-    for(int i=0; i<params->guess_num; i++)
-    {
-        printf("%3.6lf ", opt_control_params[i]);
-    }
-    printf(")  fit = %3.6lf ; %3.6lf ; %g ; %g\n", J, pop_exc_A / pop_exc_B, pop_exc_A, pop_exc_B);
+//    printf("%d| (", *count);
+//    for(int i=0; i<params->guess_num; i++)
+//    {
+//        printf("%3.6lf ", opt_control_params[i]);
+//    }
+//    printf(")  fit = %3.6lf ; %3.6lf ; %g ; %g\n", J, pop_exc_A / pop_exc_B, pop_exc_A, pop_exc_B);
     return J;
 }
 

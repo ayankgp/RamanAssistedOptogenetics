@@ -6,7 +6,7 @@ from ctypes import c_int, c_double, POINTER, Structure
 __doc__ = """
 Python wrapper for RamanOpticalControl.c
 Compile with:
-gcc -O3 -shared -o RamanOpticalControl.so RamanOpticalControl.c -lm -fopenmp -fPIC
+gcc -O3 -shared -o RamanOpticalControl.so RamanOpticalControl.c -lm -fopenmp -lnlopt -fPIC
 """
 
 
@@ -29,12 +29,12 @@ class Parameters(Structure):
         ('rho_0', POINTER(c_complex)),
         ('nDIM', c_int),
         ('N_exc', c_int),
-        ('time_A', POINTER(c_double)),
-        ('time_R', POINTER(c_double)),
-        ('timeDIM_A', c_double),
-        ('timeDIM_R', c_double),
-        ('timeDIM_A', c_int),
-        ('timeDIM_R', c_int),
+        ('time', POINTER(c_double)),
+        ('timeAMP_A', c_double),
+        ('timeAMP_R', c_double),
+        ('timeAMP', c_double),
+        ('timeDIM', c_int),
+        ('delay', c_double),
         ('field_amp_A', c_double),
         ('field_amp_R', c_double),
         ('omega_R', c_double),
@@ -68,16 +68,16 @@ class Molecule(Structure):
         ('freqDIM_A', c_int),
         ('rho_0', POINTER(c_complex)),
         ('mu', POINTER(c_complex)),
-        ('field_A', POINTER(c_complex)),
         ('field_R', POINTER(c_complex)),
+        ('field_A', POINTER(c_complex)),
+        ('field', POINTER(c_complex)),
         ('rho', POINTER(c_complex)),
         ('abs_spectra', POINTER(c_double)),
         ('abs_dist', POINTER(c_double)),
         ('ref_spectra', POINTER(c_double)),
         ('Raman_levels', POINTER(c_double)),
         ('levels', POINTER(c_double)),
-        ('dyn_rho_A', POINTER(c_complex)),
-        ('dyn_rho_R', POINTER(c_complex)),
+        ('dyn_rho', POINTER(c_complex)),
         ('prob', POINTER(c_double))
     ]
 
